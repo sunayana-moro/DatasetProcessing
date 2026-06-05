@@ -1,0 +1,9 @@
+[submodule "external/Halfbody-new-identity-encoder"]
+	path = external/Halfbody-new-identity-encoder
+	url = https://github.com/sunayana-moro/Halfbody-new-identity-encoder
+[submodule "external/smirk"]
+	path = external/smirk
+	url = https://github.com/sunayana-moro/smirk
+[submodule "external/L2CS-Net"]
+	path = external/L2CS-Net
+	url = https://github.com/sunayana-moro/L2CS-Net
