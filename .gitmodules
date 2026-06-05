@@ -7,3 +7,6 @@
 [submodule "external/L2CS-Net"]
 	path = external/L2CS-Net
 	url = https://github.com/sunayana-moro/L2CS-Net
+[submodule "external/talking_face_preprocessing"]
+	path = external/talking_face_preprocessing
+	url = https://github.com/sunayana-moro/talking_face_preprocessing
