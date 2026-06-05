@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Prepare videos for renderer-style talking-face training data.
 
+Example:
+    python scripts/prepare_renderer_dataset.py \
+      --input_dir /path/to/input_videos \
+      --output_dir /tmp/renderer_dataset_test
+
 Given a directory of videos, this script creates:
 
     output_dir/
@@ -71,6 +76,11 @@ def parse_args() -> argparse.Namespace:
         help="Reuse existing extracted frames and landmark files when present.",
     )
     parser.add_argument(
+        "--fail_on_bad_video",
+        action="store_true",
+        help="Stop immediately when an input video cannot be read or remuxed.",
+    )
+    parser.add_argument(
         "--check_and_padding",
         action="store_true",
         help="Pass --check_and_padding to landmark extraction to pad missing detections.",
@@ -122,18 +132,42 @@ def make_clip_name(index: int, source: Path, preserve_names: bool, digits: int) 
     return f"video_{index:0{digits}d}"
 
 
-def prepare_named_videos(videos: list[Path], work_raw_dir: Path, preserve_names: bool, video_digits: int) -> list[dict]:
+def prepare_named_videos(
+    videos: list[Path],
+    work_raw_dir: Path,
+    preserve_names: bool,
+    video_digits: int,
+    fail_on_bad_video: bool,
+) -> tuple[list[dict], list[dict]]:
     work_raw_dir.mkdir(parents=True, exist_ok=True)
     manifest = []
-    for index, source in enumerate(videos, start=1):
-        clip_name = make_clip_name(index, source, preserve_names, video_digits)
+    skipped = []
+    clip_index = 1
+    for source in videos:
+        clip_name = make_clip_name(clip_index, source, preserve_names, video_digits)
         target = work_raw_dir / f"{clip_name}.mp4"
         if target.exists():
             target.unlink()
         # Normalize container/name for downstream scripts while avoiding a lossy transcode here.
-        run(["ffmpeg", "-i", str(source), "-c", "copy", str(target), "-y", "-loglevel", "error"])
+        command = ["ffmpeg", "-i", str(source), "-c", "copy", str(target), "-y", "-loglevel", "error"]
+        print(f"$ {' '.join(command)}", flush=True)
+        result = subprocess.run(command, check=False)
+        if result.returncode != 0:
+            target.unlink(missing_ok=True)
+            skipped_item = {
+                "source": str(source.resolve()),
+                "reason": f"ffmpeg failed with exit code {result.returncode}",
+            }
+            if fail_on_bad_video:
+                raise subprocess.CalledProcessError(result.returncode, command)
+            print(f"Skipping unreadable video: {source}", flush=True)
+            skipped.append(skipped_item)
+            continue
         manifest.append({"clip": clip_name, "source": str(source.resolve()), "working_video": str(target)})
-    return manifest
+        clip_index += 1
+    if not manifest:
+        raise SystemExit("No valid videos were prepared. Check input files or rerun with --fail_on_bad_video.")
+    return manifest, skipped
 
 
 def crop_faces(preprocessing_dir: Path, raw_dir: Path, cropped_dir: Path, expanded_ratio: float, skip_per_frame: int) -> Path:
@@ -233,7 +267,13 @@ def main() -> None:
     frames_dir = output_dir / "video_frame"
     lmd_dir = output_dir / "lmd"
 
-    manifest = prepare_named_videos(videos, raw_dir, args.preserve_names, args.video_digits)
+    manifest, skipped = prepare_named_videos(
+        videos,
+        raw_dir,
+        args.preserve_names,
+        args.video_digits,
+        args.fail_on_bad_video,
+    )
     videos_for_frames = (
         crop_faces(preprocessing_dir, raw_dir, cropped_dir, args.expanded_ratio, args.skip_per_frame)
         if args.crop_faces
@@ -247,6 +287,9 @@ def main() -> None:
 
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    skipped_path = output_dir / "skipped_videos.json"
+    if skipped:
+        skipped_path.write_text(json.dumps(skipped, indent=2) + "\n", encoding="utf-8")
 
     if not args.keep_work_dir:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -255,6 +298,8 @@ def main() -> None:
     if not args.skip_landmarks:
         print(f"Done. Landmarks: {lmd_dir}")
     print(f"Manifest: {manifest_path}")
+    if skipped:
+        print(f"Skipped videos: {skipped_path}")
 
 
 if __name__ == "__main__":
