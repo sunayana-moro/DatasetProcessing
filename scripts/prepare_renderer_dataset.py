@@ -35,8 +35,8 @@ Example:
     cd ~/DatasetProcessing
 
     python scripts/prepare_renderer_dataset.py \
-        --input_dataset ../datasettest \
-        --output_dataset datasets/renderer_dataset
+        --input_dataset /teamspace/studios/this_studio/dataset/listner \
+        --output_dataset /teamspace/studios/this_studio/dataset/renderer_dataset
 
 Output:
 -------
@@ -171,7 +171,7 @@ def main():
             "--output_dir_prefix",
             str(cropped_dir),
             "--expanded_ratio",
-            "0.6",
+            "1.2",
         ])
 
         # ------------------------------------------------------
